@@ -1,8 +1,36 @@
-Flask==2.3.2
-Flask-WTF==1.1.1           # For forms
-Flask-SQLAlchemy==3.1.1    # For database
-Flask-Login==0.6.3         # For user login (optional)
-flask-socketio
-fastapi 
-uvicorn
-gunicorn
+# Core Backend
+flask==3.0.2
+flask-sse==1.0.0
+flask-sqlalchemy==3.1.1
+python-dotenv==1.0.1
+
+# Machine Learning
+scikit-learn==1.4.0
+numpy==1.26.0
+pandas==2.1.4
+joblib==1.3.2
+
+# Database
+sqlite3==3.42.0  # Built-in (listed for documentation)
+sqlalchemy==2.0.23
+
+# Data Processing
+scipy==1.11.4
+statsmodels==0.14.1
+
+# Visualization
+matplotlib==3.8.2
+chart.js==3.9.1  # For reference (frontend)
+
+# Utilities
+gunicorn==21.2.0  # Production server
+eventlet==0.33.3  # SSE support
+python-dateutil==2.8.2
+
+# Development
+pytest==8.0.0
+pytest-cov==4.1.0
+faker==19.13.0  # Test data generation
+
+# Security
+pyjwt==2.8.0  # If adding authentication later
