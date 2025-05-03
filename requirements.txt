@@ -5,3 +5,4 @@ Flask-Login==0.6.3         # For user login (optional)
 flask-socketio
 fastapi 
 uvicorn
+gunicorn
