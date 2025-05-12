@@ -112,7 +112,7 @@ def detect_anomalies(data):
 def check_thresholds(data):
     thresholds = {
         "kiln_temperature": (1100, 1350),
-        "dust_emissions": (0, 30),
+        "dust_emissions": (0, 50),
         "co2_emissions": (0, 800),
         "energy_consumption": (0, 130),
         "oee": (65, 100),
