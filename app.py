@@ -8,41 +8,75 @@ import pickle
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import IsolationForest
-from data_sender import * 
 import numpy as np
+import os
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = 'Supper'
+app.secret_key = os.environ.get('SECRET_KEY', 'Supper')
 app.permanent_session_lifetime = timedelta(seconds=300)
 
 # ========== Load Pre-trained Models ==========
-# Load the pre-trained Isolation Forest model
-with open('isolation_forest_model.pkl', 'rb') as model_file:
-    isolation_forest_model = pickle.load(model_file)
+def load_model_assets():
+    try:
+        # Load the pre-trained Isolation Forest model
+        with open('isolation_forest_model.pkl', 'rb') as model_file:
+            isolation_forest_model = pickle.load(model_file)
 
-# Load the pre-trained scaler
-with open('scaler.pkl', 'rb') as scaler_file:
-    scaler = pickle.load(scaler_file)
+        # Load the pre-trained scaler
+        with open('scaler.pkl', 'rb') as scaler_file:
+            scaler = pickle.load(scaler_file)
+            
+        return isolation_forest_model, scaler
+    except Exception as e:
+        print(f"Error loading model assets: {e}")
+        return None, None
+
+isolation_forest_model, scaler = load_model_assets()
 
 # ========== DB Fetch ==========
 def query_db():
-    conn = sqlite3.connect("data.db")
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute("SELECT * FROM cement_data ORDER BY timestamp DESC LIMIT 10;")
-        rows = cursor.fetchall()
-        return [dict(row) for row in rows]
-    except Exception as e:
-        print(f"DB Error: {e}")
-        return []
-    finally:
-        conn.close()
+    # Use Render's PostgreSQL if available, otherwise fall back to SQLite
+    db_url = os.environ.get('DATABASE_URL', 'sqlite:///data.db')
+    
+    if db_url.startswith('postgres://'):
+        import psycopg2
+        db_url = db_url.replace('postgres://', 'postgresql://', 1)
+        try:
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM cement_data ORDER BY timestamp DESC LIMIT 10;")
+            columns = [desc[0] for desc in cursor.description]
+            rows = cursor.fetchall()
+            return [dict(zip(columns, row)) for row in rows]
+        except Exception as e:
+            print(f"PostgreSQL Error: {e}")
+            return []
+        finally:
+            if conn:
+                conn.close()
+    else:
+        # SQLite fallback
+        try:
+            conn = sqlite3.connect("data.db")
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM cement_data ORDER BY timestamp DESC LIMIT 10;")
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            print(f"SQLite Error: {e}")
+            return []
+        finally:
+            if conn:
+                conn.close()
 
 # ========== Anomaly Detection ==========
 def detect_anomalies(data):
+    if isolation_forest_model is None or scaler is None:
+        data['anomaly'] = 0  # Default to no anomaly if models aren't loaded
+        return data
+
     # Define the features
     features = ['total_cement_produced', 'production_target', 'oee', 'energy_consumption',
                 'clinker_production_rate', 'kiln_running_hours', 'kiln_temperature',
@@ -53,20 +87,24 @@ def detect_anomalies(data):
                 'dust_emissions', 'co2_emissions', 'water_usage', 'noise_levels', 'limestone_stock',
                 'clinker_stock', 'cement_stock', 'hourly_production']
 
-    # Convert the incoming data to DataFrame
-    df = pd.DataFrame([data], columns=features)
+    try:
+        # Convert the incoming data to DataFrame
+        df = pd.DataFrame([data], columns=features)
 
-    # Preprocess and scale the data
-    X_scaled = scaler.transform(df)
+        # Preprocess and scale the data
+        X_scaled = scaler.transform(df)
 
-    # Predict anomalies
-    predictions = isolation_forest_model.predict(X_scaled)
+        # Predict anomalies
+        predictions = isolation_forest_model.predict(X_scaled)
 
-    # Convert predictions from [-1, 1] to [0, 1] (0 = normal, 1 = anomaly)
-    anomalies = (predictions == -1).astype(int)
+        # Convert predictions from [-1, 1] to [0, 1] (0 = normal, 1 = anomaly)
+        anomalies = (predictions == -1).astype(int)
 
-    # Add anomaly predictions to the data
-    data['anomaly'] = anomalies[0]
+        # Add anomaly predictions to the data
+        data['anomaly'] = anomalies[0]
+    except Exception as e:
+        print(f"Anomaly detection error: {e}")
+        data['anomaly'] = 0  # Default to no anomaly on error
 
     return data
 
@@ -146,9 +184,5 @@ def get_data():
     return Response(generate(), content_type='text/event-stream')
 
 if __name__ == '__main__':
-    # Start main_data in a separate thread (if necessary)
-    data_thread = threading.Thread(target=main_data, daemon=True)
-    data_thread.start()
-
-    # Start Flask app
-    app.run(debug=True, threaded=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
